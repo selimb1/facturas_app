@@ -1220,8 +1220,6 @@ async def upload_invoices(
 ):
     results = []
 
-        results = []
-
     for file in files:
         content_type = file.content_type or ""
         file_bytes = await file.read()
@@ -1234,7 +1232,7 @@ async def upload_invoices(
         elif content_type == "application/pdf":
             data = await extract_invoice_data_from_pdf(file_bytes)
 
-        # Otro formato: lo ignoramos por ahora
+        # Otro formato: lo marcamos como no soportado
         else:
             data = {"error": f"Tipo de archivo no soportado: {content_type}"}
 
@@ -1245,7 +1243,7 @@ async def upload_invoices(
             }
         )
 
-    # Inicializo todos los txt
+    # TXT principal (Holistor / Bejerman / Tango)
     txt_content = ""
     txt_citems_bejerman = ""
     txt_cregesp_bejerman = ""
@@ -1254,11 +1252,8 @@ async def upload_invoices(
         txt_content = build_txt_content_holistor(results)
 
     elif sistema == "bejerman":
-        # Cabecera
         txt_content = build_txt_content_bejerman(results)
-        # Ítems
         txt_citems_bejerman = build_txt_citems_bejerman(results)
-        # Regímenes especiales
         txt_cregesp_bejerman = build_txt_cregesp_bejerman(results)
 
     elif sistema == "tango":
@@ -1275,7 +1270,6 @@ async def upload_invoices(
             "sistema": sistema,
         },
     )
-
 
 
 # =================== Aca termina BEJERMAN ===================
