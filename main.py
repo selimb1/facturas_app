@@ -406,6 +406,8 @@ def build_txt_line_holistor(data: dict) -> str:
 
 # =================== HOLISTOR ===================
 
+# =================== HOLISTOR ===================
+
 def _num(v):
     """Convierte a string numérico con punto, vacío si no hay dato."""
     if v in (None, "", "null"):
@@ -436,8 +438,8 @@ def build_txt_line_holistor(data: dict) -> str:
     tot = data.get("totales", {}) or {}
     fisc = data.get("datos_fiscales_afip", {}) or {}
 
-    # --- Datos de totales / IVA ---
-    importe_neto_gravado = tot.get("importe_neto_gravado") or 0.0
+    # -------- Totales crudos del JSON --------
+    importe_neto_gravado_raw = tot.get("importe_neto_gravado") or 0.0
     importe_no_gravado = tot.get("importe_neto_no_gravado") or 0.0
     importe_exento = tot.get("importe_exento") or 0.0
     total_comprobante = tot.get("total_comprobante") or 0.0
@@ -457,7 +459,24 @@ def build_txt_line_holistor(data: dict) -> str:
     perc_otras = tot.get("percepciones_otras") or 0.0
     percepciones_total = (perc_iva or 0) + (perc_iibb or 0) + (perc_otras or 0)
 
-    # --- Campos específicos Holistor ---
+    # -------- RE-CÁLCULO MATEMÁTICO DEL NETO GRAVADO --------
+    # Fórmula: total = neto_gravado + no_gravado + exento + percepciones + IVA
+    # => neto_gravado = (total - no_gravado - exento - percepciones) / (1 + tasa_iva/100)
+    try:
+        base_total = float(total_comprobante) - float(importe_no_gravado) - float(importe_exento) - float(percepciones_total)
+        if float(tasa_iva) > 0:
+            neto_calc = round(base_total / (1.0 + float(tasa_iva) / 100.0), 2)
+        else:
+            # Si no hay IVA, el neto gravado es directamente la base
+            neto_calc = round(base_total, 2)
+    except Exception:
+        # Si algo falla, usamos lo que vino del JSON
+        neto_calc = importe_neto_gravado_raw
+
+    importe_neto_gravado = neto_calc
+    credito_fiscal = iva_liquidado  # por ahora igual al IVA
+
+    # -------- Campos específicos Holistor --------
 
     # Nombre / tipo comprobante
     nombre_comprobante = (dc.get("tipo") or "Factura").capitalize()
@@ -469,16 +488,13 @@ def build_txt_line_holistor(data: dict) -> str:
     fecha_emision = dc.get("fecha_emision") or ""
     fecha_recepcion = fecha_emision  # por ahora uso misma fecha
 
-    # Códigos para neto / exento / no gravado (bien básico por ahora)
+    # Códigos para neto / exento / no gravado
     codigo_neto_gravado = "1" if importe_neto_gravado else ""
     cod_concepto_no_gravado = "2" if importe_no_gravado else ""
     cod_operacion_exenta = "3" if importe_exento else ""
 
     # Código percepción / retención (si hay algo, pongo 1)
     codigo_perc_ret_pcta = "1" if percepciones_total else ""
-
-    # Crédito fiscal: por ahora igual al IVA liquidado
-    credito_fiscal = iva_liquidado
 
     condicion_fiscal_prov = em.get("condicion_iva") or ""
     cuit_prov = em.get("cuit") or ""
@@ -507,7 +523,7 @@ def build_txt_line_holistor(data: dict) -> str:
         fecha_emision,                      # Fecha Emision
         fecha_recepcion,                    # Fecha Recepcion
         codigo_neto_gravado,                # Codigo Neto Gravado
-        _num(importe_neto_gravado),         # Neto Gravado
+        _num(importe_neto_gravado),         # Neto Gravado (RECALCULADO)
         cod_concepto_no_gravado,           # Cod Concepto no Gravado
         _num(importe_no_gravado),           # Conceptos no Gravados
         cod_operacion_exenta,              # Cod Operacion Exenta
@@ -556,6 +572,7 @@ def build_txt_content_holistor(results: List[dict]) -> str:
         lines.append(line)
 
     return "\n".join(lines)
+
 
 # =================== FIN HOLISTOR ===================
 
