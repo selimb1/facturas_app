@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from openai import OpenAI
 from datetime import datetime
 import re
+import fitz  # PyMuPDF
 
 
 client = OpenAI()  # o client = OpenAI(api_key="...")
@@ -122,6 +123,23 @@ No expliques nada, solo responde con el JSON pedido.
             },
         ],
     )
+
+async def extract_invoice_data_from_pdf(pdf_bytes: bytes) -> dict:
+    """
+    Toma un PDF en bytes, renderiza la primera página a imagen
+    y reutiliza extract_invoice_data para que la IA lea la factura.
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    if doc.page_count == 0:
+        return {"error": "PDF sin páginas"}
+
+    # Por ahora solo usamos la primera página (MVP)
+    page = doc.load_page(0)
+    pix = page.get_pixmap(dpi=200)  # resolución razonable para OCR
+    img_bytes = pix.tobytes("jpeg")
+
+    data = await extract_invoice_data(img_bytes)
+    return data
 
     content = response.choices[0].message.content
     try:
@@ -1202,15 +1220,28 @@ async def upload_invoices(
 ):
     results = []
 
+        results = []
+
     for file in files:
-        image_bytes = await file.read()
-        data = await extract_invoice_data(image_bytes)
-        math_check = check_math(data)
+        content_type = file.content_type or ""
+        file_bytes = await file.read()
+
+        # Imagen (jpg, png, etc.)
+        if content_type.startswith("image/"):
+            data = await extract_invoice_data(file_bytes)
+
+        # PDF
+        elif content_type == "application/pdf":
+            data = await extract_invoice_data_from_pdf(file_bytes)
+
+        # Otro formato: lo ignoramos por ahora
+        else:
+            data = {"error": f"Tipo de archivo no soportado: {content_type}"}
+
         results.append(
             {
                 "filename": file.filename,
                 "data": data,
-                "math_check": math_check,
             }
         )
 
