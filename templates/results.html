@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+    <meta charset="utf-8">
+    <title>Resultados - Comprobantes procesados</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: #f5f5f5;
+        }
+
+        pre {
+            background: #212529;
+            color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            overflow-x: auto;
+        }
+
+        textarea {
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1 class="h4 mb-0">Resultados</h1>
+            <a href="/" class="btn btn-outline-secondary btn-sm">Volver</a>
+        </div>
+
+        {# ---------- BLOQUE TXT PRINCIPAL ---------- #}
+        {% if sistema == "bejerman" %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6">Archivos para importación en Bejerman</h2>
+                <p class="text-muted mb-2">
+                    Se generan tres archivos ASCII:
+                </p>
+                <p class="mb-1">
+                    <strong>CCabecer.txt:</strong> cabecera de comprobantes de compras.
+                </p>
+                <p class="mb-1">
+                    <strong>CItems.txt:</strong> detalle de renglones (netos, IVA, etc.).
+                </p>
+                <p class="mb-3">
+                    <strong>CRegEsp.txt:</strong> regímenes especiales (retenciones / percepciones).
+                </p>
+
+                {# CCabecer.txt #}
+                {% if txt_content %}
+                <h3 class="h6 mt-3">CCabecer.txt</h3>
+                <a class="btn btn-success btn-sm mb-2"
+                    href="data:text/plain;charset=utf-8,{{ txt_content | urlencode }}" download="CCabecer.txt">
+                    Descargar CCabecer.txt
+                </a>
+                <textarea class="form-control mb-3" rows="4" readonly>{{ txt_content }}</textarea>
+                {% endif %}
+
+                {# CItems.txt #}
+                {% if txt_citems_bejerman %}
+                <h3 class="h6 mt-3">CItems.txt</h3>
+                <a class="btn btn-success btn-sm mb-2"
+                    href="data:text/plain;charset=utf-8,{{ txt_citems_bejerman | urlencode }}" download="CItems.txt">
+                    Descargar CItems.txt
+                </a>
+                <textarea class="form-control mb-3" rows="4" readonly>{{ txt_citems_bejerman }}</textarea>
+                {% endif %}
+
+                {# CRegEsp.txt #}
+                {% if txt_cregesp_bejerman %}
+                <h3 class="h6 mt-3">CRegEsp.txt</h3>
+                <p class="text-muted mb-1">
+                    Formato: un régimen especial por línea (retenciones / percepciones).
+                </p>
+                <a class="btn btn-success btn-sm mb-2"
+                    href="data:text/plain;charset=utf-8,{{ txt_cregesp_bejerman | urlencode }}" download="CRegEsp.txt">
+                    Descargar CRegEsp.txt
+                </a>
+                <textarea class="form-control mb-3" rows="4" readonly>{{ txt_cregesp_bejerman }}</textarea>
+                {% endif %}
+            </div>
+        </div>
+
+        {% elif txt_content %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6">Archivo para importación masiva (.txt)</h2>
+                <p class="text-muted mb-2">
+                    Formato: un comprobante por línea, campos separados por punto y coma (;).
+                </p>
+                <a class="btn btn-success btn-sm mb-3"
+                    href="data:text/plain;charset=utf-8,{{ txt_content | urlencode }}" download="comprobantes.txt">
+                    Descargar .txt
+                </a>
+                <textarea class="form-control" rows="6" readonly>{{ txt_content }}</textarea>
+            </div>
+        </div>
+        {% endif %}
+
+        {# ---------- Detalle JSON + control matemático ---------- #}
+        {% if results %}
+        {% for item in results %}
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h2 class="h6">
+                    Archivo: <span class="text-primary">{{ item.filename }}</span>
+                </h2>
+
+                {# Indicador de control matemático #}
+                {% if item.math_check %}
+                {% if item.math_check.ok %}
+                <span class="badge bg-success mb-2">
+                    Control matemático OK
+                </span>
+                {% else %}
+                <div class="alert alert-warning py-1 px-2 small">
+                    <strong>Control matemático con diferencias:</strong><br>
+                    Neto ítems: {{ item.math_check.neto_items }} vs JSON: {{ item.math_check.neto_json }}
+                    (Δ {{ item.math_check.neto_diff }})<br>
+                    IVA ítems: {{ item.math_check.iva_items }} vs JSON: {{ item.math_check.iva_json }}
+                    (Δ {{ item.math_check.iva_diff }})<br>
+                    Total ítems: {{ item.math_check.total_items }} vs JSON: {{ item.math_check.total_json }}
+                    (Δ {{ item.math_check.total_diff_items_vs_json }})
+                </div>
+                {% endif %}
+                {% endif %}
+
+                <hr>
+                <pre>{{ item.data | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div class="alert alert-warning">
+            No se encontraron resultados.
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
