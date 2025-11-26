@@ -404,51 +404,161 @@ def build_txt_line_holistor(data: dict) -> str:
     return ";".join(safe_fields)
 
 
+# =================== HOLISTOR ===================
+
+def _num(v):
+    """Convierte a string numérico con punto, vacío si no hay dato."""
+    if v in (None, "", "null"):
+        return ""
+    try:
+        return f"{float(v):.2f}"
+    except Exception:
+        return ""
+
+
+def build_txt_line_holistor(data: dict) -> str:
+    """
+    Arma UNA línea del TXT de Holistor con este encabezado:
+
+    Nombre Comprobante;Tipo Comprobante;Numero Sucursal;Numero de Comprobante;
+    Fecha Emision;Fecha Recepcion;Codigo Neto Gravado;Neto Gravado;
+    Cod Concepto no Gravado;Conceptos no Gravados;
+    Cod Operacion Exenta;Operaciones Exentas;
+    Codigo Perc_Ret_PCta;Percepciones;
+    Tasa IVA;IVA Liquidado;Credito Fiscal;Total;
+    Condicion Fiscal Proveedor;CUIT Proveedor;Nombre Proveedor;Domicilio Proveedor;
+    Codigo Postal;Provincia;Tipo Documento Cliente;Moneda;Tipo Cambio;CAI
+    """
+
+    dc = data.get("datos_comprobante", {}) or {}
+    em = data.get("emisor", {}) or {}
+    rec = data.get("receptor", {}) or {}
+    tot = data.get("totales", {}) or {}
+    fisc = data.get("datos_fiscales_afip", {}) or {}
+
+    # --- Datos de totales / IVA ---
+    importe_neto_gravado = tot.get("importe_neto_gravado") or 0.0
+    importe_no_gravado = tot.get("importe_neto_no_gravado") or 0.0
+    importe_exento = tot.get("importe_exento") or 0.0
+    total_comprobante = tot.get("total_comprobante") or 0.0
+
+    ivas = tot.get("ivAs") or []
+    if ivas:
+        iva_row = ivas[0]
+        tasa_iva = iva_row.get("alicuota") or 0.0
+        iva_liquidado = iva_row.get("importe_iva") or 0.0
+    else:
+        tasa_iva = 0.0
+        iva_liquidado = 0.0
+
+    # Percepciones: sumo todo lo que haya
+    perc_iva = tot.get("percepciones_iva") or 0.0
+    perc_iibb = tot.get("percepciones_ingresos_brutos") or 0.0
+    perc_otras = tot.get("percepciones_otras") or 0.0
+    percepciones_total = (perc_iva or 0) + (perc_iibb or 0) + (perc_otras or 0)
+
+    # --- Campos específicos Holistor ---
+
+    # Nombre / tipo comprobante
+    nombre_comprobante = (dc.get("tipo") or "Factura").capitalize()
+    tipo_comprobante = dc.get("letra") or ""
+
+    nro_sucursal = (dc.get("punto_venta") or "").zfill(4)
+    nro_comprobante = dc.get("numero_comprobante") or ""
+
+    fecha_emision = dc.get("fecha_emision") or ""
+    fecha_recepcion = fecha_emision  # por ahora uso misma fecha
+
+    # Códigos para neto / exento / no gravado (bien básico por ahora)
+    codigo_neto_gravado = "1" if importe_neto_gravado else ""
+    cod_concepto_no_gravado = "2" if importe_no_gravado else ""
+    cod_operacion_exenta = "3" if importe_exento else ""
+
+    # Código percepción / retención (si hay algo, pongo 1)
+    codigo_perc_ret_pcta = "1" if percepciones_total else ""
+
+    # Crédito fiscal: por ahora igual al IVA liquidado
+    credito_fiscal = iva_liquidado
+
+    condicion_fiscal_prov = em.get("condicion_iva") or ""
+    cuit_prov = em.get("cuit") or ""
+    nombre_prov = em.get("razon_social") or ""
+    domicilio_prov = em.get("domicilio_comercial") or ""
+    cp = ""  # No lo tenemos en el JSON todavía
+    provincia = em.get("provincia") or ""
+
+    # Tipo documento cliente (80 = CUIT, 96 = DNI, etc.)
+    if rec.get("cuit"):
+        tipo_doc_cliente = "80"
+    elif rec.get("numero_documento"):
+        tipo_doc_cliente = "96"
+    else:
+        tipo_doc_cliente = ""
+
+    moneda = dc.get("moneda") or ""
+    tipo_cambio = dc.get("cotizacion_moneda") or ""
+    cai_cae = fisc.get("cae") or ""
+
+    campos = [
+        nombre_comprobante,                 # Nombre Comprobante
+        tipo_comprobante,                   # Tipo Comprobante (letra)
+        nro_sucursal,                       # Numero Sucursal
+        nro_comprobante,                    # Numero de Comprobante
+        fecha_emision,                      # Fecha Emision
+        fecha_recepcion,                    # Fecha Recepcion
+        codigo_neto_gravado,                # Codigo Neto Gravado
+        _num(importe_neto_gravado),         # Neto Gravado
+        cod_concepto_no_gravado,           # Cod Concepto no Gravado
+        _num(importe_no_gravado),           # Conceptos no Gravados
+        cod_operacion_exenta,              # Cod Operacion Exenta
+        _num(importe_exento),              # Operaciones Exentas
+        codigo_perc_ret_pcta,              # Codigo Perc_Ret_PCta
+        _num(percepciones_total),          # Percepciones
+        _num(tasa_iva),                    # Tasa IVA
+        _num(iva_liquidado),               # IVA Liquidado
+        _num(credito_fiscal),              # Credito Fiscal
+        _num(total_comprobante),           # Total
+        condicion_fiscal_prov,             # Condicion Fiscal Proveedor
+        cuit_prov,                         # CUIT Proveedor
+        nombre_prov,                       # Nombre Proveedor
+        domicilio_prov,                    # Domicilio Proveedor
+        cp,                                # Codigo Postal
+        provincia,                         # Provincia
+        tipo_doc_cliente,                  # Tipo Documento Cliente
+        moneda,                            # Moneda
+        _num(tipo_cambio),                 # Tipo Cambio
+        cai_cae,                           # CAI / CAE
+    ]
+
+    # reemplazo ';' internos por ',' para no romper el CSV
+    safe_campos = [str(c).replace(";", ",") for c in campos]
+    return ";".join(safe_campos)
+
+
 def build_txt_content_holistor(results: List[dict]) -> str:
-    # Encabezado opcional, solo para que el Excel se vea prolijo.
-    # Holistor igual importa por POSICIÓN, no por nombre de columna.  [oai_citation:2‡IVAImportaciondatosExcel-HOLISTOR.pdf](sediment://file_00000000b7d471f5bf1d1974537ff539)
+    """Arma TODO el TXT de Holistor (con encabezado + líneas)."""
     header = (
-        "Nombre Comprobante;"
-        "Tipo Comprobante;"
-        "Numero Sucursal;"
-        "Numero de Comprobante;"
-        "Fecha Emision;"
-        "Fecha Recepcion;"
-        "Codigo Neto Gravado;"
-        "Neto Gravado;"
-        "Cod Concepto no Gravado;"
-        "Conceptos no Gravados;"
-        "Cod Operacion Exenta;"
-        "Operaciones Exentas;"
-        "Codigo Perc_Ret_PCta;"
-        "Percepciones;"
-        "Tasa IVA;"
-        "IVA Liquidado;"
-        "Credito Fiscal;"
-        "Total;"
-        "Condicion Fiscal Proveedor;"
-        "CUIT Proveedor;"
-        "Nombre Proveedor;"
-        "Domicilio Proveedor;"
-        "Codigo Postal;"
-        "Provincia;"
-        "Tipo Documento Cliente;"
-        "Moneda;"
-        "Tipo Cambio;"
-        "CAI"
+        "Nombre Comprobante;Tipo Comprobante;Numero Sucursal;Numero de Comprobante;"
+        "Fecha Emision;Fecha Recepcion;Codigo Neto Gravado;Neto Gravado;"
+        "Cod Concepto no Gravado;Conceptos no Gravados;"
+        "Cod Operacion Exenta;Operaciones Exentas;"
+        "Codigo Perc_Ret_PCta;Percepciones;"
+        "Tasa IVA;IVA Liquidado;Credito Fiscal;Total;"
+        "Condicion Fiscal Proveedor;CUIT Proveedor;Nombre Proveedor;Domicilio Proveedor;"
+        "Codigo Postal;Provincia;Tipo Documento Cliente;Moneda;Tipo Cambio;CAI"
     )
 
     lines = [header]
 
     for item in results:
-        data = item.get("data", {})
+        data = item.get("data", {}) or {}
         line = build_txt_line_holistor(data)
         lines.append(line)
 
     return "\n".join(lines)
 
+# =================== FIN HOLISTOR ===================
 
-# ---------- Aca termina Holistor ----------
 
 # =================== BEJERMAN ===================
 def _to_float(v):
